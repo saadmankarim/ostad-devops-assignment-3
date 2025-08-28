@@ -1,0 +1,66 @@
+name: CI/CD - Node App - Ostad Assignemnt 3
+
+on:
+  push:
+    branches:
+		- main
+
+jobs:
+  test:
+    name: Run test and upload artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22 with npm cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'  # caches npm deps for speed
+      - name: Install deps
+        run: npm ci
+
+      - name: Run tests and capture results
+        run: |
+          mkdir -p artifacts
+          set -o pipefail
+          npm run check | tee artifacts/test-results.txt
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results.txt
+
+  deploy:
+    name: Download artifact and deploy to self-hosted
+    needs: test
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download test artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results
+          path: artifacts
+
+      - name: Show test results in logs
+        run: cat artifacts/test-results.txt
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install PM2 (process manager)
+        run: npm i -g pm2
+
+      - name: Deploy with PM2
+        run: |
+          pm2 delete node-app || true
+          pm2 start ./src/server.js --name node-app
+          pm2 save
